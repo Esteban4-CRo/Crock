@@ -55,9 +55,7 @@ Selecciona interfaz >
 
 ## Tutorial
 
-<video src="image/Tutorial%20.mp4" controls="controls" width="100%">
-  Tu navegador no soporta el tag de video. Puedes descargarlo <a href="image/Tutorial%20.mp4">aquí</a>.
-</video>
+[Ver Video Tutorial de CROCK en Google Drive](https://drive.google.com/file/d/12wBPDQUab42E2bKibDLSxSbCUUgHYHdP/view?usp=sharing)
 
 ---
 **Desarrollado por EstebanCRO**
