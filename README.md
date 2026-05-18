@@ -55,7 +55,9 @@ Selecciona interfaz >
 
 ## Tutorial
 
-[Tutorial de CROCK](./image/Tutorial\ .mp4)
+<video src="image/Tutorial%20.mp4" controls="controls" width="100%">
+  Tu navegador no soporta el tag de video. Puedes descargarlo <a href="image/Tutorial%20.mp4">aquí</a>.
+</video>
 
 ---
 **Desarrollado por EstebanCRO**
