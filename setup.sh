@@ -26,13 +26,13 @@ if [ ! -f wordlists/rockyou.txt ]; then
 fi
 
 # 2. Top 1 Millón de passwords (SecLists)
-if [ ! -f wordlists/top_1M.txt ]; then
+if [ ! -s wordlists/top_1M.txt ]; then
     echo "  -> Descargando Top 1 Millón (SecLists)..."
-    wget -q --show-progress https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10-million-password-list-top-1000000.txt -O wordlists/top_1M.txt
+    wget -q --show-progress https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10-million-password-list-top-1000000.txt -O wordlists/top_1M.txt || wget -q --show-progress https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10-million-password-list-top-10000.txt -O wordlists/top_1M.txt
 fi
 
 # 3. Credenciales por defecto de Routers
-if [ ! -f wordlists/router_defaults.txt ]; then
+if [ ! -s wordlists/router_defaults.txt ]; then
     echo "  -> Descargando contraseñas por defecto de routers..."
     wget -q --show-progress https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Default-Credentials/default-passwords.txt -O wordlists/router_defaults.txt
 fi
