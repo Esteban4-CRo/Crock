@@ -55,9 +55,11 @@ Selecciona interfaz >
 
 ## Tutorial
 
-<video src="https://drive.google.com/uc?export=download&id=12wBPDQUab42E2bKibDLSxSbCUUgHYHdP" controls="controls" width="100%">
-  Tu navegador no soporta el tag de video. Puedes verlo <a href="https://drive.google.com/file/d/12wBPDQUab42E2bKibDLSxSbCUUgHYHdP/view?usp=sharing">aquí</a>.
-</video>
+<div align="center">
+  <a href="https://drive.google.com/file/d/12wBPDQUab42E2bKibDLSxSbCUUgHYHdP/view?usp=sharing">
+    <img src="https://img.shields.io/badge/▶_Ver_Video_Tutorial-CROCK-FF0000?style=for-the-badge&logo=googledrive&logoColor=white" width="400" alt="Video Tutorial CROCK" />
+  </a>
+</div>
 
 ---
 **Desarrollado por EstebanCRO**
