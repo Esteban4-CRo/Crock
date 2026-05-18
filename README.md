@@ -22,6 +22,8 @@ sudo ./setup.sh
 
 El script instalará automáticamente `g++`, `make`, `libpcap`, `openssl`, `aircrack-ng` e `iw`.
 
+> **Nota sobre Diccionarios:** Al ejecutar `setup.sh`, la herramienta descargará automáticamente diccionarios masivos en la carpeta `wordlists/`, incluyendo el clásico **rockyou.txt (134 MB)**, una lista con el **Top 1 Millón de contraseñas de SecLists**, y **credenciales por defecto de routers**. 
+
 ## Uso
 Una vez configurado, ejecuta la herramienta con privilegios de root:
 
