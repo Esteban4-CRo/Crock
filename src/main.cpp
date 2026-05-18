@@ -27,6 +27,8 @@ void show_targets(const std::map<std::string, APInfo> &targets,
   }
 }
 
+#include <sys/stat.h>
+
 std::vector<std::string> get_available_wordlists() {
   std::vector<std::string> lists;
   DIR *dir;
@@ -34,8 +36,13 @@ std::vector<std::string> get_available_wordlists() {
   if ((dir = opendir("wordlists")) != NULL) {
     while ((ent = readdir(dir)) != NULL) {
       std::string name = ent->d_name;
-      if (name != "." && name != "..")
-        lists.push_back("wordlists/" + name);
+      if (name != "." && name != "..") {
+        std::string path = "wordlists/" + name;
+        struct stat st;
+        if (stat(path.c_str(), &st) == 0 && st.st_size > 0) {
+          lists.push_back(path);
+        }
+      }
     }
     closedir(dir);
   }
