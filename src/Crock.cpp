@@ -347,6 +347,15 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
         }
     });
 
+    // ── 2.5 Sniffer en segundo plano para el motor nativo ────────────────────
+    std::atomic<bool> sniffing(true);
+    std::thread sniffer_t([&]() {
+        while (sniffing && keep_running) {
+            pcap_dispatch(handle, 10, packet_handler, nullptr);
+            usleep(1000);
+        }
+    });
+
     // ── 3. Main loop: discover clients + check handshake ─────────────────────
     bool handshake_found = false;
     auto t0 = std::chrono::steady_clock::now();
@@ -372,13 +381,23 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
             ssid_local.c_str(), elapsed, known_clients.size());
         std::fflush(stdout);
 
-        // Check handshake: tshark first (fast), fallback to aircrack
-        if (hs_check_tshark(cap_file) || hs_check_aircrack(cap_file)) {
+        // Check handshake: motor interno nativo primero, luego aircrack
+        bool internal_hs = false;
+        {
+            std::lock_guard<std::mutex> lock(targets_mtx);
+            internal_hs = targets[bssid].handshake.complete;
+        }
+
+        if (internal_hs || hs_check_aircrack(cap_file)) {
             handshake_found = true;
             break;
         }
         sleep(2);
     }
+
+    // Detener sniffer interno
+    sniffing = false;
+    if (sniffer_t.joinable()) sniffer_t.join();
 
     // Stop deauth + airodump
     deauth_active = false;
