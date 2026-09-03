@@ -111,6 +111,8 @@ bool Crock::set_interface(const std::string &iface) {
   if (ret > 0)
     std::fprintf(stderr, "[!] pcap_activate warning: %s\n", pcap_geterr(handle));
 
+  pcap_setnonblock(handle, 1, errbuf);
+
   // Verificar DLT — el parser espera radiotap (DLT_IEEE802_11_RADIO = 127)
   int dlt = pcap_datalink(handle);
   std::printf("[*] Interfaz: %s | DLT actual: %d (%s)\n",
