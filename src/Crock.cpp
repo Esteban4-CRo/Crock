@@ -451,8 +451,11 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
         ssid_local = targets[bssid].ssid;
         enc_local  = targets[bssid].encryption;
     }
-    std::printf("\n\033[1;31m[+] Starting attacks against %s (%s)\033[0m\n",
-        bssid.c_str(), ssid_local.c_str());
+    std::printf("\n\033[1;31m[+] Starting attacks against %s (%s) on Channel %d\033[0m\n",
+        bssid.c_str(), ssid_local.c_str(), chan);
+
+    // Fijar canal de la interfaz al canal del objetivo
+    set_channel(chan);
 
     // ── Setup paths ───────────────────────────────────────────────────────────
     std::string bssid_safe = bssid;
