@@ -75,10 +75,10 @@ private:
   static std::map<std::string, APInfo> targets;
   static void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char *packet);
   
-  static void derive_pmk(const std::string &pass, const std::string &ssid, u_char *pmk);
-  static void derive_ptk(const u_char *pmk, const u_char *ap_mac, const u_char *cli_mac, 
-                        const u_char *anonce, const u_char *snonce, u_char *ptk);
-  static bool verify_mic(const u_char *ptk, const std::vector<u_char> &frame, const u_char *orig_mic, bool use_md5 = false);
+  void derive_pmk(const std::string &pass, const std::string &ssid, u_char *pmk);
+  void derive_ptk(const u_char *pmk, const u_char *ap_mac, const u_char *cli_mac, 
+                  const u_char *anonce, const u_char *snonce, u_char *ptk);
+  bool verify_mic(const u_char *ptk, const std::vector<u_char> &frame, const u_char *orig_mic, bool use_md5 = false);
 };
 
 #endif

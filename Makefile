@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++17 -Iinclude
+CXXFLAGS = -Wall -Wextra -std=c++17 -Iinclude -Wno-deprecated-declarations
 LDFLAGS = -lpcap -lssl -lcrypto -lpthread
 
 SRC_DIR = src

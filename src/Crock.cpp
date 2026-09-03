@@ -196,17 +196,22 @@ void Crock::packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const
 
 void Crock::start_scan() {
   keep_running = true;
+  if (!handle) { std::fprintf(stderr, "[!] No hay handle pcap abierto. Llama set_interface() primero.\n"); return; }
   hopper_thread = std::thread(&Crock::channel_hopper, this);
+  long last_printed = -1;
   while (keep_running) {
-    pcap_dispatch(handle, 1, packet_handler, nullptr);
-    if (packet_count % 50 == 0) {
-      std::printf("\033[H\033[J\033[1;30m[ CROCK SCAN MODE ]\033[0m Packets: %ld | Nets: %zu\n----------------------------------------------------------------------\nID  | BSSID              | CH  | PWR   | SSID\n", packet_count.load(), targets.size());
+    pcap_dispatch(handle, 32, packet_handler, nullptr);
+    long cur = packet_count.load();
+    // Pintar tabla: en el primer paquete, cada 50, o cuando llegan redes nuevas
+    if (cur != last_printed && (cur == 0 || cur % 50 == 0 || !targets.empty())) {
+      last_printed = cur;
+      std::printf("\033[H\033[J\033[1;30m[ CROCK SCAN MODE ]\033[0m Packets: %ld | Nets: %zu\n----------------------------------------------------------------------\nID  | BSSID              | CH  | PWR   | SSID\n", cur, targets.size());
       std::lock_guard<std::mutex> lock(targets_mtx);
       int id = 1;
       for (auto const& [b, i] : targets) { if (id > 15) break; std::printf("%-3d | %-18s | %-3d | %3ddB | %s %s\n", id++, b.c_str(), i.channel, i.signal, i.ssid.c_str(), i.handshake_captured ? "\033[1;32m[HS]\033[0m" : ""); }
       std::fflush(stdout);
     }
-    usleep(1000);
+    usleep(5000); // 5ms — no quema CPU y procesa paquetes rápido
   }
   if (hopper_thread.joinable()) hopper_thread.join();
 }
