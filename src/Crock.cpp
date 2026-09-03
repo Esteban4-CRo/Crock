@@ -268,19 +268,82 @@ void Crock::packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const
   }
 }
 
+static void parse_scan_csv(const std::string &csv_path, std::map<std::string, APInfo> &targets, std::mutex &mtx, std::atomic<long> &pkt_cnt) {
+    std::ifstream f(csv_path);
+    if (!f) return;
+    std::string line;
+    bool in_sta = false;
+    while (std::getline(f, line)) {
+        if (line.find("Station MAC") != std::string::npos) { in_sta = true; continue; }
+        if (in_sta) continue;
+        if (line.size() < 30 || line.find(",") == std::string::npos) continue;
+
+        std::vector<std::string> fields;
+        std::stringstream ss(line);
+        std::string tok;
+        while (std::getline(ss, tok, ',')) {
+            while (!tok.empty() && (tok[0]==' '||tok[0]=='\t')) tok.erase(0,1);
+            while (!tok.empty() && (tok.back()==' '||tok.back()=='\t'||tok.back()=='\r')) tok.pop_back();
+            fields.push_back(tok);
+        }
+        if (fields.size() < 14) continue;
+
+        std::string bssid = fields[0];
+        if (bssid.size() != 17 || bssid[2] != ':' || bssid[5] != ':') continue;
+
+        for (auto &c : bssid) c = (char)tolower((unsigned char)c);
+
+        int chan = 1; try { chan = std::stoi(fields[3]); } catch(...) {}
+        int pwr  = -99; try { pwr = std::stoi(fields[8]); } catch(...) {}
+        
+        std::string priv = fields[5];
+        std::string enc = "WPA2";
+        if (priv.find("WPA3") != std::string::npos) enc = "WPA3";
+        else if (priv.find("WPA2") != std::string::npos) enc = "WPA2";
+        else if (priv.find("WPA") != std::string::npos) enc = "WPA";
+        else if (priv.find("WEP") != std::string::npos) enc = "WEP";
+        else if (priv.find("OPN") != std::string::npos) enc = "OPEN";
+
+        std::string ssid = fields[13];
+        if (ssid.empty()) ssid = "<HIDDEN>";
+
+        long beacons = 0; try { beacons = std::stol(fields[9]); } catch(...) {}
+
+        std::lock_guard<std::mutex> lock(mtx);
+        if (targets.find(bssid) == targets.end()) {
+            targets[bssid] = {bssid, ssid, enc, chan, (int8_t)pwr, false, {}, {}};
+        } else {
+            targets[bssid].signal = (int8_t)pwr;
+            targets[bssid].channel = chan;
+            if (ssid != "<HIDDEN>") targets[bssid].ssid = ssid;
+            if (enc != "OPEN") targets[bssid].encryption = enc;
+        }
+        if (beacons > 0) pkt_cnt += beacons;
+    }
+}
+
 void Crock::start_scan() {
   keep_running = true;
-  if (!handle) {
-    std::printf("\033[1;31m[!] Error: no se pudo abrir la interfaz con pcap.\033[0m\n");
-    std::printf("[!] Verifica: eres root? La interfaz existe? Prueba con 'ip link show'\n");
-    return;
+
+  // Limpiar escaneos anteriores
+  std::system("pkill -f airodump-ng > /dev/null 2>&1");
+  std::system("rm -f /tmp/crock_scan-* > /dev/null 2>&1");
+
+  // Iniciar motor colector en segundo plano para garantizar 100% de captura en todos los drivers
+  if (!current_iface.empty()) {
+    std::string dump_scan_cmd = "airodump-ng --output-format csv -w /tmp/crock_scan " + current_iface + " > /dev/null 2>&1 &";
+    std::system(dump_scan_cmd.c_str());
   }
+
   hopper_thread = std::thread(&Crock::channel_hopper, this);
   auto last_refresh = std::chrono::steady_clock::now();
   while (keep_running) {
-    pcap_dispatch(handle, 64, packet_handler, nullptr);
+    if (handle) {
+      pcap_dispatch(handle, 32, packet_handler, nullptr);
+    }
+    parse_scan_csv("/tmp/crock_scan-01.csv", targets, targets_mtx, packet_count);
+
     auto now = std::chrono::steady_clock::now();
-    // Refresco por tiempo — cada 500ms, sin importar si llegan paquetes o no
     if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_refresh).count() >= 500) {
       last_refresh = now;
       std::lock_guard<std::mutex> lock(targets_mtx);
@@ -290,18 +353,23 @@ void Crock::start_scan() {
                   packet_count.load(), targets.size());
       int id = 1;
       for (auto const& [b, i] : targets) {
-        if (id > 20) break;
+        if (id > 25) break;
         std::printf("%-3d | %-18s | %-3d | %4ddB | %-5s | %s %s\n",
           id++, b.c_str(), i.channel, i.signal,
           i.encryption.c_str(), i.ssid.c_str(),
           i.handshake_captured ? "\033[1;32m[HS]\033[0m" : "");
       }
       if (targets.empty())
-        std::printf("    (Esperando paquetes 802.11... asegurate de estar en monitor mode)\n");
+        std::printf("    (Escaneando paquetes 802.11 en modo leal...)\n");
       std::fflush(stdout);
     }
-    usleep(10000); // 10ms
+    usleep(20000); // 20ms
   }
+
+  // Limpieza al terminar el escaneo
+  std::system("pkill -f airodump-ng > /dev/null 2>&1");
+  std::system("rm -f /tmp/crock_scan-* > /dev/null 2>&1");
+
   if (hopper_thread.joinable()) hopper_thread.join();
 }
 
