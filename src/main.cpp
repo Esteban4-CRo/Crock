@@ -29,23 +29,31 @@ void show_targets(const std::map<std::string, APInfo> &targets,
 
 #include <sys/stat.h>
 
-std::vector<std::string> get_available_wordlists() {
-  std::vector<std::string> lists;
-  DIR *dir;
+static void scan_wordlist_dir(const std::string &dir_path, std::vector<std::string> &lists) {
+  DIR *dir = opendir(dir_path.c_str());
+  if (!dir) return;
   struct dirent *ent;
-  if ((dir = opendir("wordlists")) != NULL) {
-    while ((ent = readdir(dir)) != NULL) {
-      std::string name = ent->d_name;
-      if (name != "." && name != ".." && name.find("README") == std::string::npos && name.front() != '#' && name.back() != '~') {
-        std::string path = "wordlists/" + name;
-        struct stat st;
-        if (stat(path.c_str(), &st) == 0 && st.st_size > 0 && S_ISREG(st.st_mode)) {
-          lists.push_back(path);
-        }
+  while ((ent = readdir(dir)) != NULL) {
+    std::string name = ent->d_name;
+    if (name == "." || name == ".." || name.find("README") != std::string::npos || name.front() == '#' || name.back() == '~')
+      continue;
+    std::string full_path = dir_path + "/" + name;
+    struct stat st;
+    if (stat(full_path.c_str(), &st) == 0) {
+      if (S_ISDIR(st.st_mode)) {
+        scan_wordlist_dir(full_path, lists);
+      } else if (S_ISREG(st.st_mode) && st.st_size > 0) {
+        lists.push_back(full_path);
       }
     }
-    closedir(dir);
   }
+  closedir(dir);
+}
+
+std::vector<std::string> get_available_wordlists() {
+  std::vector<std::string> lists;
+  scan_wordlist_dir("wordlists", lists);
+  std::sort(lists.begin(), lists.end());
   return lists;
 }
 
