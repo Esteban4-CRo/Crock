@@ -39,22 +39,25 @@ bool Crock::auto_monitor(const std::string &iface) {
   std::system("airmon-ng check kill > /dev/null 2>&1");
   
   // Método 1: iw
-  std::string cmd1 = "ip link set " + iface + " down && iw " + iface + " set type monitor && ip link set " + iface + " up";
-  if (std::system(cmd1.c_str()) == 0) return true;
+  std::string cmd1 = "ip link set " + iface + " down 2>/dev/null && iw " + iface + " set type monitor 2>/dev/null && ip link set " + iface + " up 2>/dev/null";
+  if (std::system(cmd1.c_str()) != 0) {
+    // Método 2: iwconfig (drivers legacy / Realtek)
+    std::string cmd2 = "ip link set " + iface + " down 2>/dev/null && iwconfig " + iface + " mode monitor 2>/dev/null && ip link set " + iface + " up 2>/dev/null";
+    if (std::system(cmd2.c_str()) != 0) {
+      // Método 3: airmon-ng start
+      std::string cmd3 = "airmon-ng start " + iface + " > /dev/null 2>&1";
+      std::system(cmd3.c_str());
+    }
+  }
 
-  // Método 2: iwconfig (drivers legacy / Realtek)
-  std::string cmd2 = "ip link set " + iface + " down && iwconfig " + iface + " mode monitor && ip link set " + iface + " up";
-  if (std::system(cmd2.c_str()) == 0) return true;
-
-  // Método 3: airmon-ng start
-  std::string cmd3 = "airmon-ng start " + iface + " > /dev/null 2>&1";
-  std::system(cmd3.c_str());
+  std::system(("ip link set " + iface + " up 2>/dev/null").c_str());
+  std::system(("ip link set " + iface + "mon up 2>/dev/null").c_str());
 
   return true;
 }
 
 bool Crock::restore_interface(const std::string &iface) {
-  std::string cmd = "ip link set " + iface + " down && (iw " + iface + " set type managed 2>/dev/null || iwconfig " + iface + " mode managed 2>/dev/null) && ip link set " + iface + " up && systemctl start NetworkManager 2>/dev/null";
+  std::string cmd = "ip link set " + iface + " down 2>/dev/null && (iw " + iface + " set type managed 2>/dev/null || iwconfig " + iface + " mode managed 2>/dev/null) && ip link set " + iface + " up 2>/dev/null && systemctl start NetworkManager 2>/dev/null";
   return std::system(cmd.c_str()) == 0;
 }
 
@@ -69,35 +72,46 @@ void Crock::channel_hopper() {
   while (keep_running) {
     set_channel(ch);
     ch = (ch % 13) + 1;
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
   }
 }
 
 bool Crock::set_interface(const std::string &iface) {
-  current_iface = iface;
+  std::string target_iface = iface;
+  
+  // Detectar si airmon-ng o el sistema generó la interfaz virtual 'wlan0mon'
+  struct stat st;
+  std::string mon_path = "/sys/class/net/" + iface + "mon";
+  if (stat(mon_path.c_str(), &st) == 0) {
+    target_iface = iface + "mon";
+    std::printf("[*] Detectada interfaz monitor virtual: %s\n", target_iface.c_str());
+  }
+
+  // Asegurar enlace activo (LINK UP)
+  std::system(("ip link set " + target_iface + " up 2>/dev/null").c_str());
+
+  current_iface = target_iface;
   if (handle) { pcap_close(handle); handle = nullptr; }
 
-  handle = pcap_create(iface.c_str(), errbuf);
+  handle = pcap_create(target_iface.c_str(), errbuf);
   if (!handle) {
-    std::fprintf(stderr, "[!] pcap_create falló en '%s': %s\n", iface.c_str(), errbuf);
+    std::fprintf(stderr, "[!] pcap_create falló en '%s': %s\n", target_iface.c_str(), errbuf);
     return false;
   }
   pcap_set_snaplen(handle, 65535);
   pcap_set_promisc(handle, 1);
-  pcap_set_timeout(handle, 1);  // 1ms
-  pcap_set_rfmon(handle, 1);    // intentar forzar monitor mode a nivel pcap
+  pcap_set_timeout(handle, 10);  // 10ms
+  pcap_set_rfmon(handle, 1);
 
   int ret = pcap_activate(handle);
   if (ret < 0) {
-    // Si pcap_activate falló porque el driver no soporta rfmon vía pcap nl80211,
-    // reintentar con rfmon=0 (la interfaz ya fue cambiada a monitor mode vía iw/iwconfig/airmon-ng)
     std::fprintf(stderr, "[*] pcap_activate con rfmon=1 falló (%s). Reintentando con rfmon=0...\n", pcap_geterr(handle));
     pcap_close(handle);
-    handle = pcap_create(iface.c_str(), errbuf);
+    handle = pcap_create(target_iface.c_str(), errbuf);
     if (handle) {
       pcap_set_snaplen(handle, 65535);
       pcap_set_promisc(handle, 1);
-      pcap_set_timeout(handle, 1);
+      pcap_set_timeout(handle, 10);
       pcap_set_rfmon(handle, 0);
       ret = pcap_activate(handle);
     }
@@ -115,8 +129,8 @@ bool Crock::set_interface(const std::string &iface) {
 
   // Verificar DLT — el parser espera radiotap (DLT_IEEE802_11_RADIO = 127)
   int dlt = pcap_datalink(handle);
-  std::printf("[*] Interfaz: %s | DLT actual: %d (%s)\n",
-              iface.c_str(), dlt, pcap_datalink_val_to_name(dlt));
+  std::printf("[*] Interfaz activada: %s | DLT: %d (%s)\n",
+              target_iface.c_str(), dlt, pcap_datalink_val_to_name(dlt));
   if (dlt != DLT_IEEE802_11_RADIO) {
     if (pcap_set_datalink(handle, DLT_IEEE802_11_RADIO) != 0)
       std::fprintf(stderr, "[!] No se pudo forzar radiotap (DLT 127). DLT=%d — paquetes 802.11 no se parsearán.\n", dlt);
