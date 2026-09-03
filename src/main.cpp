@@ -36,10 +36,10 @@ std::vector<std::string> get_available_wordlists() {
   if ((dir = opendir("wordlists")) != NULL) {
     while ((ent = readdir(dir)) != NULL) {
       std::string name = ent->d_name;
-      if (name != "." && name != "..") {
+      if (name != "." && name != ".." && name.find("README") == std::string::npos && name.front() != '#' && name.back() != '~') {
         std::string path = "wordlists/" + name;
         struct stat st;
-        if (stat(path.c_str(), &st) == 0 && st.st_size > 0) {
+        if (stat(path.c_str(), &st) == 0 && st.st_size > 0 && S_ISREG(st.st_mode)) {
           lists.push_back(path);
         }
       }
