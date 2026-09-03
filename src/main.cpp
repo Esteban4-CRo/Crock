@@ -81,7 +81,11 @@ int main() {
   std::string iface = ifaces[choice];
 
   auditor.auto_monitor(iface);
-  auditor.set_interface(iface);
+  if (!auditor.set_interface(iface)) {
+    std::cout << "\033[1;31m[!] No se pudo abrir '" << iface << "' con pcap.\033[0m" << std::endl;
+    std::cout << "[!] Asegurate de correr como root y que la interfaz esta en monitor mode." << std::endl;
+    return 1;
+  }
 
   std::vector<std::string> selected_wordlists;
   auto available = get_available_wordlists();

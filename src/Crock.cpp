@@ -62,8 +62,38 @@ void Crock::channel_hopper() {
 
 bool Crock::set_interface(const std::string &iface) {
   current_iface = iface;
-  handle = pcap_open_live(iface.c_str(), 65535, 1, 1, errbuf);
-  return handle != nullptr;
+  if (handle) { pcap_close(handle); handle = nullptr; }
+
+  handle = pcap_create(iface.c_str(), errbuf);
+  if (!handle) {
+    std::fprintf(stderr, "[!] pcap_create falló en '%s': %s\n", iface.c_str(), errbuf);
+    return false;
+  }
+  pcap_set_snaplen(handle, 65535);
+  pcap_set_promisc(handle, 1);
+  pcap_set_timeout(handle, 1);  // 1ms
+  pcap_set_rfmon(handle, 1);    // forzar monitor mode a nivel pcap
+
+  int ret = pcap_activate(handle);
+  if (ret < 0) {
+    std::fprintf(stderr, "[!] pcap_activate falló: %s\n", pcap_geterr(handle));
+    pcap_close(handle); handle = nullptr;
+    return false;
+  }
+  if (ret > 0)
+    std::fprintf(stderr, "[!] pcap_activate warning: %s\n", pcap_geterr(handle));
+
+  // Verificar DLT — el parser espera radiotap (DLT_IEEE802_11_RADIO = 127)
+  int dlt = pcap_datalink(handle);
+  std::printf("[*] Interfaz: %s | DLT actual: %d (%s)\n",
+              iface.c_str(), dlt, pcap_datalink_val_to_name(dlt));
+  if (dlt != DLT_IEEE802_11_RADIO) {
+    if (pcap_set_datalink(handle, DLT_IEEE802_11_RADIO) != 0)
+      std::fprintf(stderr, "[!] No se pudo forzar radiotap (DLT 127). DLT=%d — paquetes 802.11 no se parsearán.\n", dlt);
+    else
+      std::printf("[*] DLT forzado a IEEE802_11_RADIO (127)\n");
+  }
+  return true;
 }
 
 const std::map<std::string, APInfo>& Crock::get_targets() const { return targets; }
