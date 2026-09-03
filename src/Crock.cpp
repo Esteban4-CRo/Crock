@@ -487,6 +487,13 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
         ssid_local.c_str(), bssid.c_str());
     sleep(2);
 
+    // BSSID in uppercase for CSV matching
+    std::string bssid_upper = bssid;
+    for (auto &c : bssid_upper) c = (char)toupper((unsigned char)c);
+
+    std::vector<std::string> known_clients;
+    std::set<std::string> announced;
+
     // Cargar clientes descubiertos durante la fase de escaneo previa
     {
         std::lock_guard<std::mutex> lock(targets_mtx);
@@ -495,10 +502,6 @@ void Crock::targeted_attack(const std::string &bssid, const std::vector<std::str
             known_clients = it->second.clients;
         }
     }
-
-    // BSSID in uppercase for CSV matching
-    std::string bssid_upper = bssid;
-    for (auto &c : bssid_upper) c = (char)toupper((unsigned char)c);
 
     // ── 2. Ultra-Fast Continuous Deauth Thread (Dual Injection) ───────────────
     std::atomic<bool> deauth_active(true);
