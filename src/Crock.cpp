@@ -8,6 +8,7 @@
 #include <set>
 #include <ctime>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <openssl/sha.h>
 #include <openssl/md5.h>
 #include <dirent.h>
@@ -80,9 +81,8 @@ bool Crock::set_interface(const std::string &iface) {
   std::string target_iface = iface;
   
   // Detectar si airmon-ng o el sistema generó la interfaz virtual 'wlan0mon'
-  struct stat st;
   std::string mon_path = "/sys/class/net/" + iface + "mon";
-  if (stat(mon_path.c_str(), &st) == 0) {
+  if (access(mon_path.c_str(), F_OK) == 0) {
     target_iface = iface + "mon";
     std::printf("[*] Detectada interfaz monitor virtual: %s\n", target_iface.c_str());
   }
