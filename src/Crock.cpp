@@ -196,22 +196,37 @@ void Crock::packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const
 
 void Crock::start_scan() {
   keep_running = true;
-  if (!handle) { std::fprintf(stderr, "[!] No hay handle pcap abierto. Llama set_interface() primero.\n"); return; }
+  if (!handle) {
+    std::printf("\033[1;31m[!] Error: no se pudo abrir la interfaz con pcap.\033[0m\n");
+    std::printf("[!] Verifica: eres root? La interfaz existe? Prueba con 'ip link show'\n");
+    return;
+  }
   hopper_thread = std::thread(&Crock::channel_hopper, this);
-  long last_printed = -1;
+  auto last_refresh = std::chrono::steady_clock::now();
   while (keep_running) {
-    pcap_dispatch(handle, 32, packet_handler, nullptr);
-    long cur = packet_count.load();
-    // Pintar tabla: en el primer paquete, cada 50, o cuando llegan redes nuevas
-    if (cur != last_printed && (cur == 0 || cur % 50 == 0 || !targets.empty())) {
-      last_printed = cur;
-      std::printf("\033[H\033[J\033[1;30m[ CROCK SCAN MODE ]\033[0m Packets: %ld | Nets: %zu\n----------------------------------------------------------------------\nID  | BSSID              | CH  | PWR   | SSID\n", cur, targets.size());
+    pcap_dispatch(handle, 64, packet_handler, nullptr);
+    auto now = std::chrono::steady_clock::now();
+    // Refresco por tiempo — cada 500ms, sin importar si llegan paquetes o no
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_refresh).count() >= 500) {
+      last_refresh = now;
       std::lock_guard<std::mutex> lock(targets_mtx);
+      std::printf("\033[H\033[J\033[1;30m[ CROCK SCAN MODE ]\033[0m Packets: %ld | Nets: %zu | Ctrl+C para detener\n"
+                  "----------------------------------------------------------------------\n"
+                  "ID  | BSSID              | CH  | PWR   | ENC   | SSID\n",
+                  packet_count.load(), targets.size());
       int id = 1;
-      for (auto const& [b, i] : targets) { if (id > 15) break; std::printf("%-3d | %-18s | %-3d | %3ddB | %s %s\n", id++, b.c_str(), i.channel, i.signal, i.ssid.c_str(), i.handshake_captured ? "\033[1;32m[HS]\033[0m" : ""); }
+      for (auto const& [b, i] : targets) {
+        if (id > 20) break;
+        std::printf("%-3d | %-18s | %-3d | %4ddB | %-5s | %s %s\n",
+          id++, b.c_str(), i.channel, i.signal,
+          i.encryption.c_str(), i.ssid.c_str(),
+          i.handshake_captured ? "\033[1;32m[HS]\033[0m" : "");
+      }
+      if (targets.empty())
+        std::printf("    (Esperando paquetes 802.11... asegurate de estar en monitor mode)\n");
       std::fflush(stdout);
     }
-    usleep(5000); // 5ms — no quema CPU y procesa paquetes rápido
+    usleep(10000); // 10ms
   }
   if (hopper_thread.joinable()) hopper_thread.join();
 }
