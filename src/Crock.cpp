@@ -69,11 +69,18 @@ void Crock::set_channel(int channel) {
 }
 
 void Crock::channel_hopper() {
-  int ch = 1;
+  static const int channels[] = {
+    // 2.4 GHz
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+    // 5 GHz (UNII-1, UNII-2, UNII-3)
+    36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165
+  };
+  static const size_t num_ch = sizeof(channels) / sizeof(channels[0]);
+  size_t idx = 0;
   while (keep_running) {
-    set_channel(ch);
-    ch = (ch % 13) + 1;
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    set_channel(channels[idx]);
+    idx = (idx + 1) % num_ch;
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
 }
 
@@ -329,9 +336,9 @@ void Crock::start_scan() {
   std::system("pkill -f airodump-ng > /dev/null 2>&1");
   std::system("rm -f /tmp/crock_scan-* > /dev/null 2>&1");
 
-  // Iniciar motor colector en segundo plano para garantizar 100% de captura en todos los drivers
+  // Iniciar motor colector en segundo plano para garantizar 100% de captura en 2.4 GHz y 5 GHz
   if (!current_iface.empty()) {
-    std::string dump_scan_cmd = "airodump-ng --output-format csv -w /tmp/crock_scan " + current_iface + " > /dev/null 2>&1 &";
+    std::string dump_scan_cmd = "airodump-ng --band abg --output-format csv -w /tmp/crock_scan " + current_iface + " > /dev/null 2>&1 &";
     std::system(dump_scan_cmd.c_str());
   }
 
