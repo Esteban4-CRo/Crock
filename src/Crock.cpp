@@ -37,18 +37,31 @@ std::vector<std::string> Crock::list_interfaces() {
 
 bool Crock::auto_monitor(const std::string &iface) {
   std::system("airmon-ng check kill > /dev/null 2>&1");
-  std::string cmd = "ip link set " + iface + " down && iw " + iface + " set type monitor && ip link set " + iface + " up";
-  return std::system(cmd.c_str()) == 0;
+  
+  // Método 1: iw
+  std::string cmd1 = "ip link set " + iface + " down && iw " + iface + " set type monitor && ip link set " + iface + " up";
+  if (std::system(cmd1.c_str()) == 0) return true;
+
+  // Método 2: iwconfig (drivers legacy / Realtek)
+  std::string cmd2 = "ip link set " + iface + " down && iwconfig " + iface + " mode monitor && ip link set " + iface + " up";
+  if (std::system(cmd2.c_str()) == 0) return true;
+
+  // Método 3: airmon-ng start
+  std::string cmd3 = "airmon-ng start " + iface + " > /dev/null 2>&1";
+  std::system(cmd3.c_str());
+
+  return true;
 }
 
 bool Crock::restore_interface(const std::string &iface) {
-  std::string cmd = "ip link set " + iface + " down && iw " + iface + " set type managed && ip link set " + iface + " up && systemctl start NetworkManager";
+  std::string cmd = "ip link set " + iface + " down && (iw " + iface + " set type managed 2>/dev/null || iwconfig " + iface + " mode managed 2>/dev/null) && ip link set " + iface + " up && systemctl start NetworkManager 2>/dev/null";
   return std::system(cmd.c_str()) == 0;
 }
 
 void Crock::set_channel(int channel) {
   if (current_iface.empty()) return;
-  std::system(("iw dev " + current_iface + " set channel " + std::to_string(channel)).c_str());
+  std::string cmd = "iw dev " + current_iface + " set channel " + std::to_string(channel) + " 2>/dev/null || iwconfig " + current_iface + " channel " + std::to_string(channel) + " 2>/dev/null";
+  std::system(cmd.c_str());
 }
 
 void Crock::channel_hopper() {
@@ -72,12 +85,27 @@ bool Crock::set_interface(const std::string &iface) {
   pcap_set_snaplen(handle, 65535);
   pcap_set_promisc(handle, 1);
   pcap_set_timeout(handle, 1);  // 1ms
-  pcap_set_rfmon(handle, 1);    // forzar monitor mode a nivel pcap
+  pcap_set_rfmon(handle, 1);    // intentar forzar monitor mode a nivel pcap
 
   int ret = pcap_activate(handle);
   if (ret < 0) {
+    // Si pcap_activate falló porque el driver no soporta rfmon vía pcap nl80211,
+    // reintentar con rfmon=0 (la interfaz ya fue cambiada a monitor mode vía iw/iwconfig/airmon-ng)
+    std::fprintf(stderr, "[*] pcap_activate con rfmon=1 falló (%s). Reintentando con rfmon=0...\n", pcap_geterr(handle));
+    pcap_close(handle);
+    handle = pcap_create(iface.c_str(), errbuf);
+    if (handle) {
+      pcap_set_snaplen(handle, 65535);
+      pcap_set_promisc(handle, 1);
+      pcap_set_timeout(handle, 1);
+      pcap_set_rfmon(handle, 0);
+      ret = pcap_activate(handle);
+    }
+  }
+
+  if (ret < 0) {
     std::fprintf(stderr, "[!] pcap_activate falló: %s\n", pcap_geterr(handle));
-    pcap_close(handle); handle = nullptr;
+    if (handle) { pcap_close(handle); handle = nullptr; }
     return false;
   }
   if (ret > 0)
