@@ -58,7 +58,7 @@ Selecciona interfaz >
 ## Tutorial
 
 <div align="center">
-  <a href="https://drive.google.com/file/d/12wBPDQUab42E2bKibDLSxSbCUUgHYHdP/view?usp=sharing">
+  <a href="https://drive.google.com/file/d/1Y6m5pMf_0VplELCZdxyh7-JxihH8d7uh/view?usp=sharing">
     <img src="https://img.shields.io/badge/▶_Ver_Video_Tutorial-CROCK-FF0000?style=for-the-badge&logo=googledrive&logoColor=white" width="400" alt="Video Tutorial CROCK" />
   </a>
 </div>
